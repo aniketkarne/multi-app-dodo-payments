@@ -26,7 +26,8 @@ Autonomous payment processing service supporting multiple applications using Dod
 
 1. **Clone and navigate to directory**
 ```bash
-clone https://github.com/aniketkarne/multi-app-dodo-payments.git
+git clone https://github.com/aniketkarne/multi-app-dodo-payments.git
+cd multi-app-dodo-payments
 ```
 
 2. **Set environment variables**
@@ -35,15 +36,16 @@ cp .env.example .env
 # Edit .env with your Dodo API keys
 ```
 
-3. **Start services**
+3. **Start services** (this also auto-initializes the database schema on first run)
 ```bash
 docker-compose up -d
 ```
 
-4. **Initialize database** (first time only)
+4. **Verify the schema initialized correctly** (first time only)
 ```bash
-docker exec -i dodo-payments-db mysql -uroot -proot_password_123 dodo_payments_db < payments-db-structure.sql
+docker exec -i dodo-payments-db mysql -uroot -proot_password_123 -e "SHOW TABLES IN dodo_payments_db;"
 ```
+You should see 10 tables: `app_registry`, `product_catalog`, `checkout_sessions`, `payments`, `webhook_events`, `subscriptions`, `user_credits`, `credit_transactions`, `refunds`, `api_keys`.
 
 5. **Service will be available at**: `http://localhost:8001`
 

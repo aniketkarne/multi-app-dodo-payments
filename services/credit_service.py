@@ -192,36 +192,86 @@ class CreditService:
         payment_id: str,
         description: str = "Refund"
     ) -> Dict[str, Any]:
-        """Refund credits (remove from balance)"""
+        """Refund credits (remove from balance).
+
+        The applied amount is clamped so the user's balance never goes
+        negative. The transaction row records the *applied* amount, so the
+        audit-log invariant ``balance_before + amount == balance_after``
+        always holds, even when the requested refund exceeded the balance.
+        Callers that need the original requested value (for reporting)
+        can read it from the ``requested_amount`` field in the result.
+        """
+        if amount <= 0:
+            raise ValueError(f"Refund amount must be positive, got {amount}")
+
         user_credits = self.get_or_create_user_credits(app_name, user_id)
-        
+
         balance_before = user_credits.credit_balance
-        balance_after = max(0, balance_before - amount)  # Don't go negative
-        
+        applied = min(amount, balance_before)  # Never refund more than held
+        balance_after = balance_before - applied
+        clamped = applied < amount
+
         # Update user credits
         user_credits.credit_balance = balance_after
-        
+
         # Create transaction record
         transaction = CreditTransaction(
             transaction_id=f"tx_{uuid.uuid4().hex[:16]}",
             app_name=app_name,
             user_id=user_id,
             type=TransactionType.REFUND,
-            amount=-amount,
+            amount=-applied,  # Signed: applied (not requested) so row reconciles
             balance_before=balance_before,
             balance_after=balance_after,
             payment_id=payment_id,
             description=description
         )
-        
+
         self.db.add(transaction)
         self.db.commit()
-        
+
+        if clamped:
+            logger.warning(
+                f"Refund clamped: requested {amount}, applied {applied} "
+                f"for {app_name}/{user_id}",
+                extra={
+                    'extra_fields': {
+                        'app_name': app_name,
+                        'user_id': user_id,
+                        'requested_amount': amount,
+                        'applied_amount': applied,
+                        'balance_before': balance_before,
+                        'balance_after': balance_after,
+                        'payment_id': payment_id,
+                        'transaction_id': transaction.transaction_id
+                    }
+                }
+            )
+        else:
+            logger.info(
+                f"Credits refunded: {app_name}/{user_id}",
+                extra={
+                    'extra_fields': {
+                        'app_name': app_name,
+                        'user_id': user_id,
+                        'requested_amount': amount,
+                        'applied_amount': applied,
+                        'balance_before': balance_before,
+                        'balance_after': balance_after,
+                        'payment_id': payment_id,
+                        'transaction_id': transaction.transaction_id
+                    }
+                }
+            )
+
         return {
             "transaction_id": transaction.transaction_id,
             "balance_before": balance_before,
             "balance_after": balance_after,
-            "amount": -amount
+            "amount": -applied,
+            "requested_amount": amount,
+            "applied_amount": applied,
+            "clamped": clamped,
         }
     
     def get_balance(self, app_name: str, user_id: str) -> int:

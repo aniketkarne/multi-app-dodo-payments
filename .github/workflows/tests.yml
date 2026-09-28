@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: pytest (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # dodopayments is the only third-party SDK the touched modules need
+          # at import time. The rest of the requirements would require MySQL
+          # + Dodo creds which the unit tests don't touch.
+          pip install pytest pytest-asyncio
+          pip install dodopayments
+
+      - name: Run unit tests
+        env:
+          DODO_API_KEY: ci-placeholder
+          WEBHOOK_SIGNING_SECRET: whsec_dGVzdF9zZWNyZXRfa2V5MTIzNDU2Nzg=
+          API_KEY_ENCRYPTION_KEY: ci-encryption-key-with-at-least-32-chars
+          MYSQL_HOST: localhost
+          MYSQL_USER: ci
+          MYSQL_PASSWORD: ci
+        run: pytest tests/ -v

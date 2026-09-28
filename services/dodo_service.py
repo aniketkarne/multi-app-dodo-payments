@@ -2,7 +2,8 @@
 Dodo Payments Service Integration
 """
 from dodopayments import DodoPayments
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 import hmac
 import hashlib
 from datetime import datetime, timedelta
@@ -12,6 +13,42 @@ from utils.logger import get_logger
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+def to_cents(amount: Union[float, int, str, Decimal, None]) -> Optional[int]:
+    """Convert a money amount to integer cents, exactly.
+
+    The previous implementation used ``int(amount * 100)`` which silently
+    truncates float-precision errors:
+
+        int(29.99 * 100) == 2998  # should be 2999
+        int(0.10  * 100) == 9     # borderline
+        int(9.99  * 100) == 998   # should be 999
+
+    Dodo charges the integer we send, so an off-by-one cent on every
+    ``29.99`` product is a real money bug. This helper uses ``Decimal``
+    with ``ROUND_HALF_UP`` and never sees the float trap.
+
+    Returns ``None`` unchanged so the SDK can treat it as "full refund".
+    Raises ``ValueError`` on garbage input rather than silently returning 0.
+    """
+    if amount is None:
+        return None
+    try:
+        # Convert via string to dodge any incoming float imprecision
+        # (Decimal(29.99) is fine, but Decimal(some_float) inherits the
+        # binary repr — we don't want that).
+        if isinstance(amount, float):
+            d = Decimal(str(amount))
+        elif isinstance(amount, Decimal):
+            d = amount
+        else:
+            d = Decimal(str(amount))
+    except (InvalidOperation, ValueError, TypeError) as e:
+        raise ValueError(f"to_cents: cannot parse amount {amount!r}") from e
+
+    cents = (d * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return int(cents)
 
 
 class DodoPaymentsService:
@@ -79,7 +116,7 @@ class DodoPaymentsService:
                 "quantity": 1,
                 "name": product_name,
                 "description": product_description,
-                "price": int(amount * 100),  # Convert to cents
+                "price": to_cents(amount),  # Exact-cents, no float-trap
                 "currency": currency.upper()
             }]
 
@@ -203,16 +240,27 @@ class DodoPaymentsService:
             # Encode to base64
             expected_signature = base64.b64encode(expected_signature_bytes).decode()
 
-            # Debug logging (INFO level for troubleshooting)
+            # Logging policy: full HMAC material is a forgery primitive if
+            # paired with a known payload. At INFO/WARN we only log length
+            # + a 8-char prefix. Full sig is DEBUG-only.
+            match = expected_signature == signature
+            prefix = expected_signature[:8] if expected_signature else ""
+
             logger.info(
-                f"Webhook signature verification debug",
+                f"Webhook signature verification "
+                f"(expected_len={len(expected_signature)}, "
+                f"received_len={len(signature)}, match={match})"
+            )
+            logger.debug(
+                "Webhook signature detail",
                 extra={
                     'extra_fields': {
-                        'expected_signature': expected_signature,
-                        'received_signature': signature,
+                        'expected_prefix': prefix,
+                        'received_prefix': signature[:8] if signature else "",
+                        'expected_len': len(expected_signature),
+                        'received_len': len(signature),
                         'payload_length': len(payload),
                         'secret_has_prefix': self.webhook_secret.startswith('whsec_'),
-                        'match': expected_signature == signature
                     }
                 }
             )
@@ -262,7 +310,7 @@ class DodoPaymentsService:
         try:
             refund = self.client.refunds.create(
                 payment_id=payment_id,
-                amount=int(amount * 100) if amount else None,
+                amount=to_cents(amount),  # Exact-cents; None means full refund
                 reason=reason
             )
 

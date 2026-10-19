@@ -687,6 +687,34 @@ async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
     from decimal import Decimal
     amount = Decimal(str(data.get("recurring_pre_tax_amount", 0))) / Decimal("100")  # Convert cents to dollars
 
+    # Dodo occasionally sends subscription webhooks with missing or non-string
+    # timestamp fields (older accounts, paused subscriptions, partial renewals).
+    # A naive `data.get("created_at").replace(...)` raises AttributeError on None
+    # and the whole handler 500s -- which Svix then retries indefinitely. Parse
+    # defensively and skip the renewal record when the field is unusable.
+    def _parse_iso(value):
+        if not isinstance(value, str):
+            return None
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            return None
+
+    subscription_start = _parse_iso(data.get("created_at"))
+    subscription_end = _parse_iso(data.get("expires_at")) if data.get("expires_at") else None
+
+    if subscription_start is None:
+        logger.warning(
+            f"Subscription renewal missing created_at; recording without period boundaries: {subscription_id}",
+            extra={
+                'extra_fields': {
+                    'subscription_id': subscription_id,
+                    'app_name': app_name,
+                    'user_id': user_id
+                }
+            }
+        )
+
     payment = Payment(
         payment_id=f"sub_pay_{uuid.uuid4().hex[:16]}",  # Generate payment_id for subscription
         session_id=None,  # Subscriptions may not have session_id
@@ -700,8 +728,8 @@ async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
         customer_email=customer.get("email") or metadata.get("customer_email"),
         credits_granted=0,  # Subscriptions don't grant credits
         subscription_id=subscription_id,
-        subscription_start=datetime.fromisoformat(data.get("created_at").replace('Z', '+00:00')),
-        subscription_end=datetime.fromisoformat(data.get("expires_at").replace('Z', '+00:00')) if data.get("expires_at") else None,
+        subscription_start=subscription_start,
+        subscription_end=subscription_end,
         dodo_response=payload
     )
 

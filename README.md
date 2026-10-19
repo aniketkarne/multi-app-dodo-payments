@@ -40,12 +40,11 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-4. **Initialize database** (first time only)
-```bash
-docker exec -i dodo-payments-db mysql -uroot -proot_password_123 dodo_payments_db < payments-db-structure.sql
-```
+4. **Service will be available at**: `http://localhost:8001`
 
-5. **Service will be available at**: `http://localhost:8001`
+   The MySQL container auto-loads `payments-db-structure.sql` on first startup
+   via the `docker-entrypoint-initdb.d/init.sql` volume mount, so the schema is
+   ready by the time the payment service first connects.
 
 ### Option 2: Local Development
 

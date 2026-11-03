@@ -182,14 +182,18 @@ class WebhookService:
                 }
             )
             
-            # Send POST request to app's callback URL
+            # Send POST request to app's callback URL. The body is serialized
+            # once and sent as those exact bytes -- the signature below covers
+            # the wire bytes so receivers can verify against the raw request
+            # body (the standard webhook verification in every language).
+            body = self._serialize_payload(payload)
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
                     app.callback_url,
-                    json=payload,
+                    content=body,
                     headers={
                         "Content-Type": "application/json",
-                        "X-Webhook-Signature": self._generate_signature(payload)
+                        "X-Webhook-Signature": self._generate_signature(body)
                     }
                 )
                 
@@ -234,17 +238,20 @@ class WebhookService:
             )
             return False
     
-    def _generate_signature(self, payload: Dict[str, Any]) -> str:
-        """Generate signature for app callback"""
-        import hmac
+    @staticmethod
+    def _serialize_payload(payload: Dict[str, Any]) -> bytes:
+        """Serialize a callback payload into the exact bytes sent on the wire"""
+        return json.dumps(payload, sort_keys=True).encode("utf-8")
+
+    @staticmethod
+    def _generate_signature(body: bytes) -> str:
+        """HMAC-SHA256 (hex) over the raw request body, keyed with WEBHOOK_SIGNING_SECRET"""
         import hashlib
-        
-        payload_str = json.dumps(payload, sort_keys=True)
-        signature = hmac.new(
+        import hmac
+
+        return hmac.new(
             settings.WEBHOOK_SIGNING_SECRET.encode(),
-            payload_str.encode(),
+            body,
             hashlib.sha256
         ).hexdigest()
-        
-        return signature
 

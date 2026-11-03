@@ -210,7 +210,7 @@ Dodo Payments (via Svix) will send webhooks to: `http://your-service.com/payment
 **Event Types:**
 - `payment.succeeded` - One-time payment completed
 - `payment.failed` - Payment failed
-- `subscription.renewed` - Subscription created/renewed
+- `subscription.renewed` - Subscription renewed for the next billing period (fires every cycle; each renewal is recorded as its own payment)
 - `subscription.cancelled` - Subscription cancelled
 
 ### App Callback
@@ -218,7 +218,7 @@ After successful payment, the service calls your app's callback URL:
 
 ```json
 POST {your_app.callback_url}
-Headers: X-Webhook-Signature: signature
+Headers: X-Webhook-Signature: <hex HMAC-SHA256 of the raw body, keyed with WEBHOOK_SIGNING_SECRET>
 
 {
   "event": "payment.success",
@@ -236,19 +236,19 @@ Headers: X-Webhook-Signature: signature
 
 ### Verify Webhook Signature
 
+Callbacks are signed with `WEBHOOK_SIGNING_SECRET`: the `X-Webhook-Signature`
+header carries the hex HMAC-SHA256 of the **exact raw request body**. Verify
+against the raw bytes you received — works from any language:
+
 ```python
 import hmac
 import hashlib
-import json
 
-def verify_webhook(payload: dict, signature: str, secret: str) -> bool:
-    payload_str = json.dumps(payload, sort_keys=True)
-    expected = hmac.new(
-        secret.encode(),
-        payload_str.encode(),
-        hashlib.sha256
-    ).hexdigest()
+def verify_webhook(body: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
+
+# secret = the WEBHOOK_SIGNING_SECRET this service is configured with
 ```
 
 ## 📊 API Documentation

@@ -57,7 +57,18 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Construct MySQL database URL"""
-        return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DATABASE}"
+        from sqlalchemy.engine import URL
+
+        # URL.create escapes username/password correctly -- string concatenation
+        # breaks on credentials containing @ : / # % (legal in MySQL passwords).
+        return URL.create(
+            "mysql+pymysql",
+            username=self.MYSQL_USER,
+            password=self.MYSQL_PASSWORD,
+            host=self.MYSQL_HOST,
+            port=self.MYSQL_PORT,
+            database=self.MYSQL_DATABASE,
+        ).render_as_string(hide_password=False)
     
     @property
     def cors_origins_list(self) -> List[str]:

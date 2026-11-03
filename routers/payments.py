@@ -369,7 +369,7 @@ async def handle_webhook(
         elif event_type == "payment.failed":
             await _handle_payment_failed(db, payload, session_id)
         elif event_type == "subscription.renewed":
-            await _handle_subscription_renewed(db, payload)
+            await _handle_subscription_renewed(db, payload, event_id)
         elif event_type == "subscription.cancelled":
             await _handle_subscription_cancelled(db, payload)
         elif event_type == "subscription.failed":
@@ -629,8 +629,13 @@ async def _handle_payment_failed(db: Session, payload: Dict[str, Any], session_i
     )
 
 
-async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
-    """Handle subscription renewal/creation"""
+async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any], event_id: str):
+    """Handle subscription renewal
+
+    Dodo fires subscription.renewed on every billing cycle ("A subscription is
+    renewed for the next billing period. The payload includes payment_id, the
+    ID of the renewal payment"), so each renewal is its own Payment record.
+    """
     data = payload.get("data", {})
     metadata = data.get("metadata", {})
 
@@ -645,6 +650,13 @@ async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
     if not all([app_name, user_id, product_id]):
         raise Exception("Missing required metadata: app_name, user_id, or product_id")
 
+    # Idempotency is per renewal, not per subscription: keying on the
+    # subscription silently drops every billing cycle after the first.
+    # data.payment_id is the renewal payment's ID; when Dodo cannot match a
+    # renewal payment it is null, so fall back to the webhook-id, which Svix
+    # keeps stable across retries of the same delivery.
+    renewal_payment_id = data.get("payment_id") or f"sub_pay_{event_id}"
+
     # Log subscription renewal verification started
     logger.info(
         f"Subscription renewal verification started: {subscription_id}",
@@ -654,20 +666,20 @@ async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
                 'app_name': app_name,
                 'subscription_id': subscription_id,
                 'product_id': product_id,
+                'payment_id': renewal_payment_id,
                 'status': data.get('status'),
                 'stage': 'verification'
             }
         }
     )
 
-    # Check if subscription payment already exists (idempotency)
+    # Check if this renewal payment was already recorded (idempotency)
     existing_payment = db.query(Payment).filter(
-        Payment.subscription_id == subscription_id,
-        Payment.app_name == app_name
+        Payment.payment_id == renewal_payment_id
     ).first()
 
     if existing_payment:
-        # Already processed
+        # Retried delivery, already recorded
         return
 
     # Get product details
@@ -688,7 +700,7 @@ async def _handle_subscription_renewed(db: Session, payload: Dict[str, Any]):
     amount = Decimal(str(data.get("recurring_pre_tax_amount", 0))) / Decimal("100")  # Convert cents to dollars
 
     payment = Payment(
-        payment_id=f"sub_pay_{uuid.uuid4().hex[:16]}",  # Generate payment_id for subscription
+        payment_id=renewal_payment_id,
         session_id=None,  # Subscriptions may not have session_id
         app_name=app_name,
         user_id=user_id,

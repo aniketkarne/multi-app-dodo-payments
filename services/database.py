@@ -75,7 +75,7 @@ class WebhookEventStatus(str, enum.Enum):
 class AppRegistry(Base):
     __tablename__ = "app_registry"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     app_name = Column(String(100), unique=True, nullable=False)
     app_display_name = Column(String(255), nullable=False)
     app_secret_key = Column(String(255), nullable=False)
@@ -95,7 +95,7 @@ class AppRegistry(Base):
 class ProductCatalog(Base):
     __tablename__ = "product_catalog"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     product_id = Column(String(100), nullable=False)
     product_name = Column(String(255), nullable=False)
@@ -117,7 +117,7 @@ class ProductCatalog(Base):
 class CheckoutSession(Base):
     __tablename__ = "checkout_sessions"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     session_id = Column(String(255), unique=True, nullable=False)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(255), nullable=False)
@@ -140,7 +140,7 @@ class CheckoutSession(Base):
 class Payment(Base):
     __tablename__ = "payments"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     payment_id = Column(String(255), unique=True, nullable=False)
     session_id = Column(String(255), ForeignKey("checkout_sessions.session_id", ondelete="CASCADE"), nullable=True)  # Nullable for subscriptions
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
@@ -166,7 +166,7 @@ class Payment(Base):
 class WebhookEvent(Base):
     __tablename__ = "webhook_events"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     event_id = Column(String(255), unique=True, nullable=False)
     event_type = Column(String(100), nullable=False)
     session_id = Column(String(255))
@@ -186,7 +186,7 @@ class WebhookEvent(Base):
 class Subscription(Base):
     __tablename__ = "subscriptions"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     subscription_id = Column(String(255), unique=True, nullable=False)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(255), nullable=False)
@@ -207,7 +207,7 @@ class Subscription(Base):
 class UserCredit(Base):
     __tablename__ = "user_credits"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(255), nullable=False)
     credit_balance = Column(Integer, nullable=False, default=0)
@@ -222,7 +222,7 @@ class UserCredit(Base):
 class CreditTransaction(Base):
     __tablename__ = "credit_transactions"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     transaction_id = Column(String(100), unique=True, nullable=False)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(255), nullable=False)
@@ -239,7 +239,7 @@ class CreditTransaction(Base):
 class Refund(Base):
     __tablename__ = "refunds"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     refund_id = Column(String(255), unique=True, nullable=False)
     payment_id = Column(String(255), ForeignKey("payments.payment_id", ondelete="CASCADE"), nullable=False)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
@@ -257,7 +257,7 @@ class Refund(Base):
 class APIKey(Base):
     __tablename__ = "api_keys"
     
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     app_name = Column(String(100), ForeignKey("app_registry.app_name", ondelete="CASCADE"), nullable=False)
     api_key = Column(String(255), unique=True, nullable=False)
     api_key_prefix = Column(String(20), nullable=False)

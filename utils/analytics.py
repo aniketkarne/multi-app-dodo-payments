@@ -72,42 +72,43 @@ def _get_mixpanel_client():
 def _event_worker():
     """Background worker to send events to Mixpanel"""
     while True:
+        event_data = _event_queue.get()
         try:
-            event_data = _event_queue.get()
-            
             if event_data is None:  # Poison pill to stop worker
                 break
-            
+
             mp = _get_mixpanel_client()
             if not mp:
                 continue
-            
+
             event_type = event_data.get("type")
-            
+
             if event_type == "track":
                 mp.track(
                     event_data["distinct_id"],
                     event_data["event_name"],
                     event_data["properties"]
                 )
-            
+
             elif event_type == "identify":
                 mp.people_set(
                     event_data["distinct_id"],
                     event_data["properties"],
                     meta=event_data.get("meta", {"$ip": 0})
                 )
-            
+
             elif event_type == "increment":
                 mp.people_increment(
                     event_data["distinct_id"],
                     event_data["properties"]
                 )
-            
-            _event_queue.task_done()
-            
+
         except Exception as e:
             logger.error(f"Mixpanel event worker error: {e}", exc_info=True)
+        finally:
+            # Always settle the queue item -- a skipped task_done() makes
+            # shutdown()'s _event_queue.join() block forever.
+            _event_queue.task_done()
 
 
 def _start_worker():
@@ -153,8 +154,8 @@ def track_event(
     try:
         _start_worker()
         
-        # Prepare properties
-        props = properties or {}
+        # Prepare properties (copy: never mutate the caller's dict)
+        props = dict(properties or {})
         props["service"] = "payments-microservice"
         props["environment"] = settings.ENVIRONMENT
         

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     
     # Security
     API_KEY_ENCRYPTION_KEY: str
+    ADMIN_API_KEY: str = ""  # Empty = /apps admin endpoints return 503
     WEBHOOK_SIGNING_SECRET: str
     ENABLE_IP_WHITELIST: bool = False
     ALLOWED_IPS: str = "127.0.0.1,::1"

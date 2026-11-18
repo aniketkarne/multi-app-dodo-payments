@@ -97,6 +97,7 @@ MYSQL_DATABASE=dodo_payments_db
 
 # Security
 API_KEY_ENCRYPTION_KEY=min_32_chars_encryption_key
+ADMIN_API_KEY=choose_a_long_random_admin_key
 WEBHOOK_SIGNING_SECRET=webhook_signing_secret
 ```
 
@@ -107,6 +108,7 @@ WEBHOOK_SIGNING_SECRET=webhook_signing_secret
 ```bash
 curl -X POST http://localhost:8001/apps/register \
   -H "Content-Type: application/json" \
+  -H "X-Admin-Key: your_admin_key" \
   -d '{
     "app_name": "anikets-suppper-app",
     "app_display_name": "Super App By  Aniket",
@@ -129,6 +131,8 @@ curl -X POST http://localhost:8001/apps/register \
 ```
 
 ⚠️ **Save the API key securely - it won't be shown again!**
+
+All `/apps` endpoints require the `X-Admin-Key` header matching `ADMIN_API_KEY` (they return `503` when it is unset). API keys are stored hashed (HMAC-SHA256 keyed with `API_KEY_ENCRYPTION_KEY`) - only the register response ever sees the raw key.
 
 ### 2. Create Checkout Session
 
@@ -314,7 +318,7 @@ aws secretsmanager create-secret \
 ## 🔐 Security Best Practices
 
 1. **Never commit `.env` files** - Use `.env.example` template
-2. **Rotate API keys regularly** - Use `/apps/{app_name}/rotate-key` endpoint
+2. **Rotate API keys regularly** - Register a replacement via `/apps/register`, then deactivate the old key's app
 3. **Enable IP whitelisting** - Set `ENABLE_IP_WHITELIST=true` in production
 4. **Use HTTPS only** - Enforce SSL/TLS
 5. **Verify webhook signatures** - Always validate Dodo webhooks

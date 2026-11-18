@@ -9,6 +9,7 @@ import secrets
 import hashlib
 
 from services.database import get_db, AppRegistry, APIKey
+from middleware.auth import hash_api_key, verify_admin_key
 
 router = APIRouter(prefix="/apps", tags=["apps"])
 
@@ -46,12 +47,13 @@ class AppInfoResponse(BaseModel):
 @router.post("/register", response_model=RegisterAppResponse)
 async def register_app(
     request: RegisterAppRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: None = Depends(verify_admin_key)
 ):
     """
     Register a new app with the payment service
-    
-    NOTE: This endpoint should be protected in production (admin only)
+
+    Requires the X-Admin-Key header (see verify_admin_key).
     """
     # Check if app already exists
     existing_app = db.query(AppRegistry).filter(
@@ -91,7 +93,7 @@ async def register_app(
     
     api_key_obj = APIKey(
         app_name=request.app_name,
-        api_key=api_key,
+        api_key=hash_api_key(api_key),
         api_key_prefix=api_key_prefix,
         key_type="LIVE",
         scopes=["payments", "products", "credits"]
@@ -110,7 +112,8 @@ async def register_app(
 @router.get("/{app_name}", response_model=AppInfoResponse)
 async def get_app_info(
     app_name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: None = Depends(verify_admin_key)
 ):
     """Get app information"""
     app = db.query(AppRegistry).filter(
@@ -137,7 +140,8 @@ async def get_app_info(
 @router.put("/{app_name}/deactivate")
 async def deactivate_app(
     app_name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: None = Depends(verify_admin_key)
 ):
     """Deactivate an app"""
     app = db.query(AppRegistry).filter(
@@ -159,7 +163,8 @@ async def deactivate_app(
 @router.put("/{app_name}/activate")
 async def activate_app(
     app_name: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _admin: None = Depends(verify_admin_key)
 ):
     """Activate an app"""
     app = db.query(AppRegistry).filter(
